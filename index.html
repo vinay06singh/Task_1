@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Web TWAIN Scanner Application</title>
+    <script type="text/javascript" src="Resources/dynamsoft.webtwain.initiate.js"></script>
+    <script type="text/javascript" src="Resources/dynamsoft.webtwain.config.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #imageViewer {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            width: 50%;
+        }
+        #imageViewer img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+        }
+        .controls {
+            width: 45%;
+        }
+        .controls div {
+            margin-bottom: 10px;
+        }
+        .controls label {
+            display: block;
+            margin: 5px 0;
+        }
+        .controls select, .controls input[type="radio"] {
+            margin-left: 10px;
+        }
+        .controls button {
+            margin-top: 10px;
+            display: block;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div>
+                <label for="source">Select Source:</label>
+                <select id="source"></select>
+            </div>
+            <div>
+                <label><input type="checkbox" id="showUI"> Show UI</label>
+                <label><input type="checkbox" id="autoFeeder"> AutoFeeder</label>
+            </div>
+            <div>
+                <label>Pixel Type:</label>
+                <label><input type="radio" name="pixelType" value="0" checked> Black & White</label>
+                <label><input type="radio" name="pixelType" value="1"> Gray</label>
+                <label><input type="radio" name="pixelType" value="2"> Color</label>
+            </div>
+            <div>
+                <label for="resolution">Resolution:</label>
+                <select id="resolution"></select>
+            </div>
+            <button onclick="scanAndSave1()">Scan and Save 1</button>
+            <button onclick="scanAndSave2()">Scan and Save 2</button>
+            <button onclick="removeBlankImages()">Remove Blank Images</button>
+            <button onclick="removeAllImages()">Remove All Images</button>
+            <button onclick="AcquireImage()">Acquire Image</button>
+        </div>
+        <div id="dwtcontrolContainer" style="width: 400px; height: 300px;"></div>
+    </div>
+    <div id="imageViewer"></div>
+
+    <script type="text/javascript">
+        var DWObject;
+
+        function Dynamsoft_OnReady() {
+            DWObject = Dynamsoft.DWT.GetWebTwain('dwtcontrolContainer');
+            populateSources();
+            populateResolutions();
+        }
+
+        function populateSources() {
+            DWObject.SelectSourceAsync().then(function() {
+                var sourceCount = DWObject.SourceCount;
+                var sourceDropdown = document.getElementById('source');
+                sourceDropdown.innerHTML = '';
+                for (var i = 0; i < sourceCount; i++) {
+                    var option = document.createElement('option');
+                    option.text = DWObject.GetSourceNameItems(i);
+                    option.value = i;
+                    sourceDropdown.add(option);
+                }
+            }).catch(function(exp) {
+                alert(exp.message);
+            });
+        }
+
+        function populateResolutions() {
+            var resolutionDropdown = document.getElementById('resolution');
+            var resolutions = [100, 200, 300, 400, 600];
+            resolutions.forEach(function(res) {
+                var option = document.createElement('option');
+                option.value = res;
+                option.text = res + ' dpi';
+                resolutionDropdown.add(option);
+            });
+        }
+
+        function scanAndSave1() {
+            if (DWObject) {
+                DWObject.SelectSourceAsync().then(function() {
+                    DWObject.IfShowUI = document.getElementById('showUI').checked;
+                    DWObject.IfFeederEnabled = document.getElementById('autoFeeder').checked;
+                    DWObject.PixelType = parseInt(document.querySelector('input[name="pixelType"]:checked').value);
+                    DWObject.Resolution = parseInt(document.getElementById('resolution').value);
+                    return DWObject.AcquireImageAsync();
+                }).then(function() {
+                    saveImagesAsPDF();
+                }).catch(function(exp) {
+                    alert(exp.message);
+                });
+            }
+        }
+
+        function scanAndSave2() {
+            if (DWObject) {
+                DWObject.SelectSourceAsync().then(function() {
+                    DWObject.IfShowUI = document.getElementById('showUI').checked;
+                    DWObject.IfFeederEnabled = document.getElementById('autoFeeder').checked;
+                    DWObject.PixelType = parseInt(document.querySelector('input[name="pixelType"]:checked').value);
+                    DWObject.Resolution = parseInt(document.getElementById('resolution').value);
+                    return DWObject.AcquireImageAsync();
+                }).then(function() {
+                    saveEachImageAsPDF();
+                }).catch(function(exp) {
+                    alert(exp.message);
+                });
+            }
+        }
+
+        function saveImagesAsPDF() {
+            var { jsPDF } = window.jspdf;
+            var pdf = new jsPDF();
+            var count = DWObject.HowManyImagesInBuffer;
+            var promises = [];
+            for (var i = 0; i < count; i++) {
+                promises.push(DWObject.ConvertToBase64(i, Dynamsoft.DWT.EnumDWT_ImageType.IT_PNG).then(function(base64, index) {
+                    if (index > 0) pdf.addPage();
+                    pdf.addImage(base64, 'PNG', 0, 0);
+                }.bind(null, null, i)));
+            }
+            Promise.all(promises).then(function() {
+                pdf.save('result.pdf');
+            });
+        }
+
+        function saveEachImageAsPDF() {
+            var { jsPDF } = window.jspdf;
+            var count = DWObject.HowManyImagesInBuffer;
+            var promises = [];
+            for (var i = 0; i < count; i++) {
+                promises.push(DWObject.ConvertToBase64(i, Dynamsoft.DWT.EnumDWT_ImageType.IT_PNG).then(function(base64, index) {
+                    var pdf = new jsPDF();
+                    pdf.addImage(base64, 'PNG', 0, 0);
+                    pdf.save(`Image_${index + 1}.pdf`);
+                }.bind(null, null, i)));
+            }
+            Promise.all(promises);
+        }
+
+        function removeBlankImages() {
+            var count = DWObject.HowManyImagesInBuffer;
+            var promises = [];
+            for (var i = count - 1; i >= 0; i--) {
+                promises.push(DWObject.GetImage(i).isEmpty().then(function(isEmpty, index) {
+                    if (isEmpty) {
+                        DWObject.RemoveImage(index);
+                        updateImageViewer();
+                    }
+                }.bind(null, i)));
+            }
+            Promise.all(promises);
+        }
+
+        function removeAllImages() {
+            DWObject.RemoveAllImages();
+            updateImageViewer();
+        }
+
+        function updateImageViewer() {
+            var count = DWObject.HowManyImagesInBuffer;
+            var viewer = document.getElementById('imageViewer');
+            viewer.innerHTML = '';
+            var promises = [];
+            for (var i = 0; i < count; i++) {
+                promises.push(DWObject.ConvertToBase64(i, Dynamsoft.DWT.EnumDWT_ImageType.IT_PNG).then(function(base64) {
+                    var img = document.createElement('img');
+                    img.src = 'data:image/png;base64,' + base64;
+                    viewer.appendChild(img);
+                }));
+            }
+            Promise.all(promises);
+        }
+
+        function AcquireImage() {
+            if (DWObject) {        
+                DWObject.SelectSourceAsync().then(function() {
+                    DWObject.IfShowUI = document.getElementById('showUI').checked;
+                    DWObject.IfFeederEnabled = document.getElementById('autoFeeder').checked;
+                    DWObject.PixelType = parseInt(document.querySelector('input[name="pixelType"]:checked').value);
+                    DWObject.Resolution = parseInt(document.getElementById('resolution').value);
+                    return DWObject.AcquireImageAsync({
+                        IfCloseSourceAfterAcquire: true 
+                    });
+                }).then(function() {
+                    updateImageViewer();
+                }).catch(function(exp) {
+                    alert(exp.message);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
